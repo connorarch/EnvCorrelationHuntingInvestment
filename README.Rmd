@@ -1,0 +1,9 @@
+---
+title: "README"
+author: "CJB"
+date: "2025-12-02"
+---
+
+## This is the R project for testing a relationship between per capita hunting investment
+## and environmental parameters regionally from SKOPE
+
