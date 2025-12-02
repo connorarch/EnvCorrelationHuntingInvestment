@@ -9,6 +9,12 @@ e <- exp(1)
 
 setwd("E:/OneDrive/aa.grad/Publication/Marginal Returns Analysis and Hunting Investment in the Four Corners/Tewa-Ethnogenesis-Hunting-Investment-and-Marginal-Returns-Analysis")
 
+#SU 1000-1300
+#TB 725-1200
+#UM 1000-1300
+#PP 1150-1400
+#MEY 900-1300
+
 #Faunal and Artifact Data
 #-----------------
 #import faunal data for tsq
