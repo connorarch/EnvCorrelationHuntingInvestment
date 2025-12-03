@@ -7,8 +7,6 @@ library(lmtest)
 
 e <- exp(1)
 
-setwd("E:/OneDrive/aa.grad/Publication/Marginal Returns Analysis and Hunting Investment in the Four Corners/Tewa-Ethnogenesis-Hunting-Investment-and-Marginal-Returns-Analysis")
-
 #SU 1000-1300
 #TB 725-1200
 #UM 1000-1300
@@ -73,11 +71,223 @@ sitedata<-sitedata %>%
   mutate(artioctpropl = log(artioctprop)) %>%
   mutate(projctpropl = log(projctprop))
 
+#import ppt data by region
+pp.ppt<-read.csv(file="PP.1150.1400.csv")
+tb.ppt<-read.csv(file="TB.725.1200.csv")
+mey.ppt<-read.csv(file="MEY.900.1300.csv")
+su.ppt<-read.csv(file="SU.1000.1300.csv")
+um.ppt<-read.csv(file="UM.1000.1300.csv")
+
+#region from character to factor
+pp.ppt$region <- factor(pp.ppt$region)
+tb.ppt$region <- factor(tb.ppt$region)
+mey.ppt$region <- factor(mey.ppt$region)
+su.ppt$region <- factor(su.ppt$region)
+um.ppt$region <- factor(um.ppt$region)
+
+#combine precipitation data
+precip_all <- bind_rows(
+  pp.ppt, tb.ppt, mey.ppt, su.ppt, um.ppt
+)
+
+#characters in date range to numerical range
+sitedata <- sitedata %>%
+  separate(Date, into = c("start", "end"), sep = "-", remove = FALSE) %>%
+  mutate(start = as.numeric(start),
+         end = as.numeric(end))
+
+# Create a mapping between District codes and region names
+district_to_region <- c(
+  "Pajarito Plateau" = "PP",
+  "Ute Mountain" = "UM",
+  "Southern Utah" = "SU",
+  "McElmo-Yellowjacket" = "MEY",
+  "Tewa Basin" = "TB"
+)
+
+# Add a column with the full region name
+sitedata$region_name <- factor(district_to_region[as.character(sitedata$District)])
+
+sitedata$mean_ppt <- mapply(function(start, end, region_name) {
+  precip_all %>%                           # <-- This references the precip dataframe
+    filter(region_name == region, year >= start, year <= end) %>%
+    summarise(mean_ppt = mean(ppt, na.rm = TRUE)) %>%
+    pull(mean_ppt)
+}, sitedata$start, sitedata$end, sitedata$region_name)
+
+fig1text <- str_wrap("Returns on Hunting Investment for Mean Precipitation", 65)
+fig1 <- ggplot(sitedata, aes(y=log(artioctprop),x=mean_ppt))
+fig1 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(artioctprop))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig1text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(artio NISP/artio NISP + grayware)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig8text <- str_wrap("Log(Artiodactyls) for Mean Precipitation", 65)
+fig8 <- ggplot(sitedata, aes(y=log(Artiodactyls),x=mean_ppt))
+fig8 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(Artiodactyls))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig8text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(Artiodactyls)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig9text <- str_wrap("Log(Points) for Mean Precipitation", 65)
+fig9 <- ggplot(sitedata, aes(y=log(Points),x=mean_ppt))
+fig9 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(Points))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig9text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(Points)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig10text <- str_wrap("Log(Points/Points+Grayware) for Mean Precipitation", 65)
+fig10 <- ggplot(sitedata, aes(y=log(projctprop),x=mean_ppt))
+fig10 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(projctprop))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig10text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(Points/Points+Grayware)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig11text <- str_wrap("Log(Lagomorphs) for Mean Precipitation", 65)
+fig11 <- ggplot(sitedata, aes(y=log(Lagomorphs),x=mean_ppt))
+fig11 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(Lagomorphs))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig11text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(Lagomorphs)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig12text <- str_wrap("Log(Sherds) for Mean Precipitation", 65)
+fig12 <- ggplot(sitedata, aes(y=log(Sherds),x=mean_ppt))
+fig12 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(log(Sherds))), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = 9, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = 9.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig12text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ln(Sherds)")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+fig13text <- str_wrap("AI for Mean Precipitation", 65)
+fig13 <- ggplot(sitedata, aes(y=ai,x=mean_ppt))
+fig13 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(ai)), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = 0, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = -.2, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.15))+
+  ggtitle(fig13text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("ai")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
+
 #linear models for figs 3 and 4
-proj.s.lm = lm(log(Points) ~ log(Sherds),data=arakawa_instance)
-artio.s.lm = lm(log(Artiodactyls) ~ log(Sherds),data=arakawa_instance)
+proj.s.lm = lm(log(Points) ~ log(Sherds),data=sitedata)
+artio.s.lm = lm(log(Artiodactyls) ~ log(Sherds),data=sitedata)
 summary(proj.s.lm)
 summary(artio.s.lm)
+
+artio.ppt.lm = lm(log(Artiodactyls) ~ mean_ppt,data=sitedata)
+summary(artio.ppt.lm)
+
+projctprop.ppt.lm = lm(log(projctprop) ~ mean_ppt,data=sitedata)
+summary(projctprop.ppt.lm)
 
 #PLOTS!
 
