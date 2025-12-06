@@ -4,6 +4,7 @@ library(tidyverse)
 library(ggplot2)
 library(ggpubr)
 library(lmtest)
+library(stats)
 
 e <- exp(1)
 
@@ -57,6 +58,7 @@ sitedatacompnomv <- sitedatacompnomv %>%
   mutate(projctrat=Points/(Sherds)) %>%
   mutate(artioctrat=Artiodactyls/(Sherds)) %>%
   mutate(ai=Artiodactyls/(Lagomorphs+Artiodactyls)) %>%
+  mutate(compindex=artioctprop/projctprop)%>%
   filter(Sherds>=0)
 
 #filter for over 1000 sherds and >0 lagomorph NISP
@@ -70,6 +72,13 @@ sitedata <- sitedatafilt
 sitedata<-sitedata %>%
   mutate(artioctpropl = log(artioctprop)) %>%
   mutate(projctpropl = log(projctprop))
+
+#characters in date range to numerical range
+sitedata <- sitedata %>%
+  separate(Date, into = c("start", "end"), sep = "-", remove = FALSE) %>%
+  mutate(start = as.numeric(start),
+         end = as.numeric(end))
+
 
 #import ppt data by region
 pp.ppt<-read.csv(file="PP.1150.1400.csv")
@@ -90,11 +99,68 @@ precip_all <- bind_rows(
   pp.ppt, tb.ppt, mey.ppt, su.ppt, um.ppt
 )
 
-#characters in date range to numerical range
-sitedata <- sitedata %>%
-  separate(Date, into = c("start", "end"), sep = "-", remove = FALSE) %>%
-  mutate(start = as.numeric(start),
-         end = as.numeric(end))
+#import mfn data by region
+pp.mfn<-read.csv(file="pp.mfn.csv")
+tb.mfn<-read.csv(file="tb.mfn.csv")
+mey.mfn<-read.csv(file="mey.mfn.csv")
+su.mfn<-read.csv(file="su.mfn.csv")
+um.mfn<-read.csv(file="um.mfn.csv")
+
+#region from character to factor
+pp.mfn$region <- factor(pp.mfn$region)
+tb.mfn$region <- factor(tb.mfn$region)
+mey.mfn$region <- factor(mey.mfn$region)
+su.mfn$region <- factor(su.mfn$region)
+um.mfn$region <- factor(um.mfn$region)
+
+#combine precipitation data
+mfn_all <- bind_rows(
+  pp.mfn, tb.mfn, mey.mfn, su.mfn, um.mfn
+)
+
+# Create a mapping between District codes and region names
+district_to_region <- c(
+  "Pajarito Plateau" = "PP",
+  "Ute Mountain" = "UM",
+  "Southern Utah" = "SU",
+  "McElmo-Yellowjacket" = "MEY",
+  "Tewa Basin" = "TB"
+)
+
+# Define regions and their corresponding file patterns
+regions <- c("PP", "TB", "MEY", "SU", "UM")
+
+# Function to read and process files for a given data type
+read_and_process <- function(regions, file_pattern) {
+  # Read all files
+  data_list <- lapply(regions, function(region) {
+    filename <- sprintf(file_pattern, region)
+    df <- read.csv(file = filename)
+    df$region <- factor(df$region)
+    return(df)
+  })
+  
+  # Combine all data
+  combined_data <- bind_rows(data_list)
+  return(combined_data)
+}
+
+# Import and combine precipitation data
+ppt_files <- c("PP.1150.1400.csv", "TB.725.1200.csv", "MEY.900.1300.csv", 
+               "SU.1000.1300.csv", "UM.1000.1300.csv")
+precip_all <- lapply(ppt_files, function(f) {
+  df <- read.csv(file = f)
+  df$region <- factor(df$region)
+  return(df)
+}) %>% bind_rows()
+
+# Import and combine mfn data (assuming consistent naming pattern)
+mfn_files <- paste0(tolower(regions), ".mfn.csv")
+mfn_all <- lapply(mfn_files, function(f) {
+  df <- read.csv(file = f)
+  df$region <- factor(df$region)
+  return(df)
+}) %>% bind_rows()
 
 # Create a mapping between District codes and region names
 district_to_region <- c(
@@ -106,14 +172,158 @@ district_to_region <- c(
 )
 
 # Add a column with the full region name
-sitedata$region_name <- factor(district_to_region[as.character(sitedata$District)])
+sitedata$region <- factor(district_to_region[as.character(sitedata$District)])
 
-sitedata$mean_ppt <- mapply(function(start, end, region_name) {
+#function which adds a row in sitedata for the mean precip for each site's date range
+
+sitedata$mean_ppt <- mapply(function(start, end, reg) {
   precip_all %>%                           # <-- This references the precip dataframe
-    filter(region_name == region, year >= start, year <= end) %>%
+    filter(region == reg, year >= start, year <= end) %>%
     summarise(mean_ppt = mean(ppt, na.rm = TRUE)) %>%
     pull(mean_ppt)
-}, sitedata$start, sitedata$end, sitedata$region_name)
+}, sitedata$start, sitedata$end, sitedata$region)
+
+#function which adds a row in sitedata for the mean mfn for each site's date range
+
+sitedata$mean_mfn <- mapply(function(start, end, reg) {
+  mfn_all %>%                           # <-- This references the mfn dataframe
+    filter(region == reg, year >= start, year <= end) %>%
+    summarise(mean_mfn = mean(mfn, na.rm = TRUE)) %>%
+    pull(mean_mfn)
+}, sitedata$start, sitedata$end, sitedata$region)
+
+
+plot_flexible_returns <- function(plot_title, 
+                                  x_var_name, 
+                                  y_var_name, 
+                                  dataset, 
+                                  x_label_text, 
+                                  y_label_text,
+                                  log_x = FALSE,
+                                  log_y = FALSE,
+                                  show_centroids = TRUE,
+                                  show_regression = TRUE
+) {
+  
+  # --- 1. Prepare Data and Aesthetics based on Log Parameters ---
+  
+  # Build aesthetic mappings dynamically
+  if (log_x) {
+    x_aes_string <- paste0("log(", x_var_name, ")")
+    mean_x_val <- mean(log(dataset[[x_var_name]]), na.rm = TRUE)
+  } else {
+    x_aes_string <- x_var_name
+    mean_x_val <- mean(dataset[[x_var_name]], na.rm = TRUE)
+  }
+  
+  if (log_y) {
+    y_aes_string <- paste0("log(", y_var_name, ")")
+    mean_y_val <- mean(log(dataset[[y_var_name]]), na.rm = TRUE)
+  } else {
+    y_aes_string <- y_var_name
+    mean_y_val <- mean(dataset[[y_var_name]], na.rm = TRUE)
+  }
+  
+  # Wrap the title text
+  wrapped_title <- str_wrap(plot_title, 65)
+  
+  # --- 2. Calculate Centroids ---
+  
+  # Create formula dynamically based on variable names
+  centroid_formula <- as.formula(paste0("cbind(", x_var_name, ",", y_var_name, ") ~ District"))
+  centroids <- aggregate(centroid_formula, dataset, mean)
+  
+  # Apply log transformation to centroids if needed
+  if (log_x) {
+    centroids[[x_var_name]] <- log(centroids[[x_var_name]])
+  }
+  if (log_y) {
+    centroids[[y_var_name]] <- log(centroids[[y_var_name]])
+  }
+  
+  # --- 3. Build the Plot ---
+  
+  fig <- ggplot(dataset, aes_string(y=y_aes_string, x=x_aes_string)) +
+    
+    # Add vertical and horizontal mean lines
+    geom_vline(xintercept=mean_x_val, color='black', linetype="dashed", linewidth=1) +
+    geom_hline(yintercept=mean_y_val, color='black', linetype="dashed", linewidth=1) +
+    
+    # Add scatter points
+    geom_point(aes(shape=District), size=4) +
+    scale_shape_manual(values=c(3, 17, 7, 16, 13))
+  
+  # Add centroids if requested
+  if (show_centroids) {
+    fig <- fig + geom_point(data=centroids, 
+                            aes_string(x=x_var_name, y=y_var_name, shape="District"), 
+                            size = 9, 
+                            show.legend = FALSE)
+  }
+  
+  # Add linear regression smooth line if requested
+  if (show_regression) {
+    fig <- fig + geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black', level=.9, formula = 'y ~ x') +
+      stat_regline_equation(family = "serif", size = 6,
+                            label.y.npc = "top", label.x.npc = "left", aes(group = 1, label = ..eq.label..), show.legend = FALSE,
+                            vjust = 1.5, hjust = 0) +
+      stat_regline_equation(family = "serif", size = 6,
+                            label.y.npc = "top", label.x.npc = "left", aes(group=1,label = ..rr.label..), show.legend = FALSE,
+                            vjust = 3.0, hjust = 0)
+  }
+  
+  # Apply themes and labels
+  fig <- fig +
+    theme(plot.title=element_text(hjust=.15)) +
+    ggtitle(wrapped_title) +
+    theme(text=element_text(size=20, face="bold", family="serif")) +
+    ylab(y_label_text) +
+    xlab(x_label_text) +
+    theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                     size=16, angle=0),
+          axis.text.y = element_text(face="bold", color="#000000", 
+                                     size=16, angle=0),
+          panel.background = element_rect(color = "black"))
+  
+  return(fig)
+}
+
+# Call the function
+my_plot <- plot_flexible_returns(
+  plot_title = "Hunting Investment for Mean Water-Year Precipitation",
+  x_var_name = "mean_ppt",
+  y_var_name = "projctprop", # Function handles the log transformation internally
+  dataset = sitedata,
+  x_label_text = "Mean Water-Year Precipitation (mm)",
+  y_label_text = "ln(points/points + grayware)",
+  log_x = FALSE,  # New parameter: set to TRUE to log-transform x
+  log_y = TRUE,
+  show_centroids = TRUE,
+  show_regression = TRUE
+)
+
+# Display the plot
+print(my_plot)
+
+# Call the function
+my_plot <- plot_flexible_returns(
+  plot_title = "Hunting Investment for Mean % in Maize Niche",
+  x_var_name = "mean_mfn",
+  y_var_name = "projctprop", # Function handles the log transformation internally
+  dataset = sitedata,
+  x_label_text = "Mean % in Maize Niche",
+  y_label_text = "ln(points/points + grayware)",
+  log_x = FALSE,  # New parameter: set to TRUE to log-transform x
+  log_y = TRUE,
+  show_centroids = TRUE
+)
+
+# Display the plot
+print(my_plot)
+
+#make centroid df for instance, artio for prop
+centroids <- aggregate(cbind(mean_ppt,artioctpropl)~District,sitedata,mean)
+
 
 fig1text <- str_wrap("Returns on Hunting Investment for Mean Precipitation", 65)
 fig1 <- ggplot(sitedata, aes(y=log(artioctprop),x=mean_ppt))
@@ -136,7 +346,9 @@ fig1 +
                                    size=16, angle=0),
         axis.text.y = element_text(face="bold", color="#000000", 
                                    size=16, angle=0),
-        panel.background = element_rect(color = "black"))
+        panel.background = element_rect(color = "black"))+
+  geom_point(data=centroids, aes(mean_ppt, artioctpropl), size = 9, shape=c(3, 17, 7, 16, 13))
+
 
 fig8text <- str_wrap("Log(Artiodactyls) for Mean Precipitation", 65)
 fig8 <- ggplot(sitedata, aes(y=log(Artiodactyls),x=mean_ppt))
@@ -147,10 +359,10 @@ fig8 +
   scale_shape_manual(values=c(3, 17, 7, 16, 13))+
   geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
   stat_regline_equation(family = "serif", size = 6,
-                        label.y = -2, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+                        label.y = 0, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
   stat_regline_equation(family = "serif", size = 6,
-                        label.y = -2.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
-  theme(plot.title=element_text(hjust=.15))+
+                        label.y = -0.5, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.9))+
   ggtitle(fig8text)+
   theme(text=element_text(size=20, face="bold",  family="serif"))+
   ylab("ln(Artiodactyls)")+
@@ -276,6 +488,29 @@ fig13 +
                                    size=16, angle=0),
         panel.background = element_rect(color = "black"))
 
+fig14text <- str_wrap("Artiodactyls for Mean Precipitation", 65)
+fig14 <- ggplot(sitedata, aes(y=Artiodactyls,x=mean_ppt))
+fig14 +
+  geom_vline(aes(xintercept=mean(mean_ppt)), color='black', linetype="dashed", linewidth=1)+
+  geom_hline(aes(yintercept=mean(Artiodactyls)), color='black', linetype="dashed", linewidth=1)+
+  geom_point(data=sitedata, aes(shape=District), size=4)+
+  scale_shape_manual(values=c(3, 17, 7, 16, 13))+
+  geom_smooth(aes(group = NULL), method = "lm", se=F, color = 'black',level=.9, formula = 'y ~ x')+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = 700, label.x = 200, aes(group = 1, label = ..eq.label..),show.legend = FALSE)+
+  stat_regline_equation(family = "serif", size = 6,
+                        label.y = 800, label.x = 200, aes(group=1,label = ..rr.label..),show.legend = FALSE)+
+  theme(plot.title=element_text(hjust=.9))+
+  ggtitle(fig14text)+
+  theme(text=element_text(size=20, face="bold",  family="serif"))+
+  ylab("Artiodactyls")+
+  xlab("mean precipitation")+
+  theme(axis.text.x = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        axis.text.y = element_text(face="bold", color="#000000", 
+                                   size=16, angle=0),
+        panel.background = element_rect(color = "black"))
+
 
 #linear models for figs 3 and 4
 proj.s.lm = lm(log(Points) ~ log(Sherds),data=sitedata)
@@ -364,22 +599,22 @@ fig5 +
         panel.background = element_rect(color = "black"))+
   geom_point(data=centroids, aes(projctpropl, artioctpropl), size = 9, shape=c(3, 17, 7, 16, 13))
 
-#grouping by high and low hunting investment
-highhunting<-sitedata %>%
-  filter(District %in% c('Tewa Basin', 'Southern Utah'))
-lowhunting<-sitedata %>%
-  filter(District %in% c('Pajarito Plateau', 'Ute Mountain'))
-
-#comparing residuals to fit line for high and low hunting groups
-ttest <- t.test(highhunting$residuals, lowhunting$residuals, var.equal = T)
-ttest
-
 #linear model of hunting returns for investment
-ap.lm <- lm(log(projctprop)~log(artioctprop),sitedata)
+ap.lm <- lm(log(artioctprop)~log(projctprop),sitedata)
 summary(ap.lm)
 
 #create column for residuals to linear model of investment and return for sites
 sitedata$residuals <- ap.lm$residuals
+
+#grouping by high and low hunting investment
+highhunting<-sitedata %>%
+  filter(District %in% c('Tewa Basin'))
+lowhunting<-sitedata %>%
+  filter(District %in% c('Pajarito Plateau', 'Ute Mountain', 'McElmo-YellowJacket'))
+
+#comparing residuals to fit line for high and low hunting groups
+ttest <- t.test(highhunting$residuals, lowhunting$residuals, var.equal = T)
+ttest
 
 #FIGURE 6- qqplot of residuals for linear model
 qqtitle <- str_wrap("QQ Plot for Residuals of Linear Model", 80)
@@ -406,7 +641,7 @@ t.resibp<-str_wrap("Log-scale Residuals of Linear Model for Study Region Sites b
 resibp<-ggplot(sitedata, aes(x=District,y=residuals, fill=District))
 resibp+geom_boxplot(size=1)+
   scale_fill_grey(start=.3, end=1)+
-  theme(plot.title=element_text(hjust=0.45))+
+  theme(plot.title=element_text(hjust=0.15))+
   ggtitle(t.resibp)+
   theme(text=element_text(size=16, face="bold",  family="serif"))+
   ylab("Residuals")+
