@@ -58,7 +58,9 @@ sitedatacompnomv <- sitedatacompnomv %>%
   mutate(projctrat=Points/(Sherds)) %>%
   mutate(artioctrat=Artiodactyls/(Sherds)) %>%
   mutate(ai=Artiodactyls/(Lagomorphs+Artiodactyls)) %>%
+  mutate(li=Lagomorphs/(Lagomorphs+Artiodactyls)) %>%
   mutate(compindex=artioctprop/projctprop)%>%
+  mutate(lagctprop=Lagomorphs/Lagomorphs+Sherds)%>%
   filter(Sherds>=0)
 
 #filter for over 1000 sherds and >0 lagomorph NISP
@@ -127,6 +129,9 @@ district_to_region <- c(
   "Tewa Basin" = "TB"
 )
 
+
+#Nonfunctional code for extracting mfn and precip data-----
+
 # Define regions and their corresponding file patterns
 regions <- c("PP", "TB", "MEY", "SU", "UM")
 
@@ -170,6 +175,7 @@ district_to_region <- c(
   "McElmo-Yellowjacket" = "MEY",
   "Tewa Basin" = "TB"
 )
+#-----
 
 # Add a column with the full region name
 sitedata$region <- factor(district_to_region[as.character(sitedata$District)])
@@ -288,7 +294,7 @@ plot_flexible_returns <- function(plot_title,
   return(fig)
 }
 
-# Call the function
+# Call the function for ppt, yes reg
 my_plot <- plot_flexible_returns(
   plot_title = "Hunting Investment for Mean Water-Year Precipitation",
   x_var_name = "mean_ppt",
@@ -302,7 +308,7 @@ my_plot <- plot_flexible_returns(
   show_regression = TRUE
 )
 
-# Display the plot
+# Display the plot fo mfn, no reg
 print(my_plot)
 
 # Call the function
@@ -315,11 +321,31 @@ my_plot <- plot_flexible_returns(
   y_label_text = "ln(points/points + grayware)",
   log_x = FALSE,  # New parameter: set to TRUE to log-transform x
   log_y = TRUE,
-  show_centroids = TRUE
+  show_centroids = TRUE,
+  show_regression = FALSE
 )
 
 # Display the plot
 print(my_plot)
+
+# Call the function
+my_plot <- plot_flexible_returns(
+  plot_title = "Artiodactyl Index for Mean Precipitation",
+  x_var_name = "mean_ppt",
+  y_var_name = "ai", # Function handles the log transformation internally
+  dataset = sitedata,
+  x_label_text = "Mean Precipitation (mm)",
+  y_label_text = "Artiodactyl Index",
+  log_x = FALSE,  # New parameter: set to TRUE to log-transform x
+  log_y = FALSE,
+  show_centroids = TRUE,
+  show_regression = TRUE
+)
+
+# Display the plot
+print(my_plot)
+
+###Manual figures---------
 
 #make centroid df for instance, artio for prop
 centroids <- aggregate(cbind(mean_ppt,artioctpropl)~District,sitedata,mean)
