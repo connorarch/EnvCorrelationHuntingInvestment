@@ -979,19 +979,25 @@ region_density <- lapply(regions, function(r) {
   if (nrow(dendro_r) > 0) {
     set.seed(3496)
     tr_mat <- replicate(1000, tr_simulation(dendro_r))
+<<<<<<< HEAD
     
+=======
+>>>>>>> ed16f3c567de710fd765a1a5f0a4d809dafa628a
     combined_mat <- c14_mat + tr_mat
   } else {
     combined_mat <- c14_mat  # no dendro for this region, use C14 only
     message("No dendro dates for region: ", r)
   }
   
+<<<<<<< HEAD
   #count number of distinct sites
   #n_sites <- n_distinct(df_study$Site_Number[df_study$Region == r]) +
    # n_distinct(dendro$Site_Number[dendro$Region == r])
   
   #combined_mat <- combined_mat / n_sites
   
+=======
+>>>>>>> ed16f3c567de710fd765a1a5f0a4d809dafa628a
   colnames(combined_mat) <- 1:1000
   combined_mat |>
     as_tibble() |>
@@ -1174,8 +1180,6 @@ sitedata_with_ckde %>%
   left_join(spd_lookup, by = c("Region_group" = "region")) %>%
   filter(calAD >= start, calAD <= end) %>%
   count()
-
-
 
 
 p1 <- ggplot(df_study_filtered, aes(x = 1950 - Date_BP)) +
